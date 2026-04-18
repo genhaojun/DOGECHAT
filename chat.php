@@ -1,19 +1,23 @@
 <?php
+error_reporting(0);
+ini_set('display_errors', '0');
 session_start();
 
 set_error_handler(function($errno, $errstr, $errfile, $errline) {
-    throw new ErrorException($errstr, 0, $errno, $errfile, $errline);
+    if ($errno & (E_ERROR | E_CORE_ERROR | E_COMPILE_ERROR | E_USER_ERROR | E_RECOVERABLE_ERROR)) {
+        throw new ErrorException($errstr, 0, $errno, $errfile, $errline);
+    }
+    return true;
 });
 set_exception_handler(function($e) {
     if (isset($_POST['act'])) {
         header('Content-Type: application/json; charset=utf-8');
         echo json_encode(['success' => false, 'msg' => '服务器错误: ' . $e->getMessage()], JSON_UNESCAPED_UNICODE);
     }
-    exit;
 });
 
 if (empty($_SESSION['dc_uid'])) {
-    header('Location: /');
+    header('Location: index.php');
     exit;
 }
 
@@ -470,13 +474,9 @@ if (isset($_POST['act']) && $_POST['act'] !== '') {
 
 
 
-$debug_errors = [];
-
-
 try {
     $db = dc_getDB();
 } catch (PDOException $e) {
-    $debug_errors[] = "数据库连接失败: " . $e->getMessage();
     $db = null;
 }
 
@@ -494,10 +494,8 @@ if ($db) {
             $dc_nick_display = $row['ndisplay'] ?: $row['uname'];
             $dc_uname_display = $row['uname'];
         } else {
-            $debug_errors[] = "无法获取用户信息 (mid: $dc_uid)";
         }
     } catch (PDOException $e) {
-        $debug_errors[] = "查询用户信息失败: " . $e->getMessage();
     }
 }
 
@@ -525,7 +523,6 @@ if ($db) {
             }
         }
     } catch (PDOException $e) {
-        $debug_errors[] = "查询好友列表失败: " . $e->getMessage();
     }
 }
 
@@ -537,7 +534,6 @@ if ($db) {
         $stmt->execute([':mid' => $dc_uid]);
         $myRooms = $stmt->fetchAll();
     } catch (PDOException $e) {
-        $debug_errors[] = "查询我的群聊失败: " . $e->getMessage();
     }
 }
 
@@ -548,7 +544,6 @@ if ($db) {
         $stmt = $db->query("SELECT rid, rname, rmcount FROM dc_rooms WHERE rstate = 1 ORDER BY rid DESC LIMIT 100");
         $allRooms = $stmt->fetchAll();
     } catch (PDOException $e) {
-        $debug_errors[] = "查询全部群聊失败: " . $e->getMessage();
     }
 }
 
@@ -560,7 +555,6 @@ if ($db) {
         $stmt->execute([':mid' => $dc_uid]);
         $allMembers = $stmt->fetchAll();
     } catch (PDOException $e) {
-        $debug_errors[] = "查询用户列表失败: " . $e->getMessage();
     }
 }
 
@@ -601,7 +595,6 @@ if ($db && !empty($myRooms)) {
             }
         }
     } catch (PDOException $e) {
-        $debug_errors[] = "查询群成员失败: " . $e->getMessage();
     }
 }
 
@@ -705,11 +698,6 @@ if ($db && !empty($myRooms)) {
         .chat-item.selected{background:#07c160;}
         .chat-item.selected .chat-item-name{color:#fff;}
         .chat-item.selected .chat-item-msg{color:rgba(255,255,255,0.8);}
-        .debug-panel{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.9);color:#fff;padding:20px;overflow-y:auto;z-index:99999;display:none;}
-        .debug-panel.show{display:block;}
-        .debug-panel h3{color:#ff6b6b;margin-bottom:10px;}
-        .debug-panel pre{background:#333;padding:10px;border-radius:4px;overflow-x:auto;}
-        .debug-panel button{position:fixed;top:10px;right:10px;padding:10px 20px;background:#ff6b6b;color:#fff;border:none;border-radius:4px;cursor:pointer;z-index:100000;}
         @media screen and (min-width:501px){
             #app{max-width:900px;display:-webkit-box;display:-webkit-flex;display:flex;}
             .sidebar{position:relative;width:300px;-webkit-flex-shrink:0;flex-shrink:0;border-right:1px solid #d9d9d9;display:-webkit-box!important;display:-webkit-flex!important;display:flex!important;}
@@ -723,28 +711,6 @@ if ($db && !empty($myRooms)) {
     </style>
 </head>
 <body>
-    <?php if (!empty($debug_errors)): ?>
-    <div id="debugPanel" class="debug-panel show">
-        <button onclick="document.getElementById('debugPanel').style.display='none'">关闭调试信息</button>
-        <h3>数据库错误</h3>
-        <pre><?php echo htmlspecialchars(implode("\n", $debug_errors)); ?></pre>
-        <h3>调试信息</h3>
-        <pre>
-用户ID: <?php echo $dc_uid; ?>
-用户名: <?php echo htmlspecialchars($dc_uname_display); ?>
-昵称: <?php echo htmlspecialchars($dc_nick_display); ?>
-好友数量: <?php echo count($friends); ?>
-我的群聊数量: <?php echo count($myRooms); ?>
-全部群聊数量: <?php echo count($allRooms); ?>
-用户数量: <?php echo count($allMembers); ?>
-        </pre>
-        <h3>我的群聊列表</h3>
-        <pre><?php echo htmlspecialchars(json_encode($myRooms, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT)); ?></pre>
-        <h3>全部群聊列表</h3>
-        <pre><?php echo htmlspecialchars(json_encode($allRooms, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT)); ?></pre>
-    </div>
-    <?php endif; ?>
-
     <div id="app">
         <div id="sidebar" class="sidebar">
             <div class="sidebar-header">
@@ -827,7 +793,7 @@ if ($db && !empty($myRooms)) {
     <div id="toast" class="toast"></div>
 
     <script>
-var DC = {userId:<?php echo $dc_uid; ?>, nickname:<?php echo json_encode($dc_nick_display); ?>, currentChat:null, messages:[], lastDmId:0, lastRmId:0, pollTimer:null, hasMore:true, isLoadingMore:false, unreadCounts:{}, pollStarted:false, sending:false};
+var DC = {userId:<?php echo intval($dc_uid); ?>, nickname:<?php echo json_encode($dc_nick_display ?: '', JSON_UNESCAPED_UNICODE); ?>, currentChat:null, messages:[], lastDmId:0, lastRmId:0, pollTimer:null, hasMore:true, isLoadingMore:false, unreadCounts:{}, pollStarted:false, sending:false};
 
 
 var PHP_FRIENDS = <?php echo json_encode($friends, JSON_UNESCAPED_UNICODE); ?>;
@@ -847,7 +813,7 @@ function dcFormatTime(ds){if(!ds)return'';var d=new Date(ds),n=new Date(),h=d.ge
 
 function dcPost(act,data,cb){
     var xhr;if(window.XMLHttpRequest){xhr=new XMLHttpRequest();}else{xhr=new ActiveXObject('Microsoft.XMLHTTP');}
-    xhr.open('POST','/dosp/dogechat/chat.php',true);xhr.setRequestHeader('Content-Type','application/x-www-form-urlencoded');
+    xhr.open('POST','chat.php',true);xhr.setRequestHeader('Content-Type','application/x-www-form-urlencoded');
     xhr.onreadystatechange=function(){if(xhr.readyState===4){var r;try{r=JSON.parse(xhr.responseText);}catch(e){r={success:false,msg:'服务器返回错误(非JSON): '+xhr.responseText.substring(0,200)};console.log('AJAX Error:',xhr.status,xhr.responseText.substring(0,500));}cb(r);}};
     var p='act='+encodeURIComponent(act);for(var k in data){if(data.hasOwnProperty(k))p+='&'+encodeURIComponent(k)+'='+encodeURIComponent(data[k]);}xhr.send(p);
 }
@@ -1049,8 +1015,8 @@ function dcDeleteContact(){if(!confirm('确认删除好友?'))return;dcPost('act
 
 
 function dcSaveNickname(){var nn=$('profileNickname').value.trim();if(!nn){dcToast('昵称不能为空');return;}dcPost('act_nick_update',{ndisplay:nn},function(res){if(res.success){DC.nickname=nn;dcToast('昵称修改成功');}else{dcToast(res.msg);}});}
-function dcChangePassword(){var oldPwd=$('oldPassword').value.trim(),newPwd=$('newPassword').value.trim(),cfmPwd=$('confirmPassword').value.trim();if(!oldPwd||!newPwd){dcToast('请填写旧密码和新密码');return;}if(newPwd!==cfmPwd){dcToast('两次输入的新密码不一致');return;}if(newPwd.length<6){dcToast('新密码至少6位');return;}dcPost('act_pwd_change',{old_pwd:oldPwd,new_pwd:newPwd},function(res){if(res.success){dcToast('密码修改成功，请重新登录');$('oldPassword').value='';$('newPassword').value='';$('confirmPassword').value='';setTimeout(function(){window.location.href='/';},1500);}else{dcToast(res.msg);}});}
-function dcLogout(){if(!confirm('确认退出登录?'))return;dcPost('act_logout',{},function(){window.location.href='/';});}
+function dcChangePassword(){var oldPwd=$('oldPassword').value.trim(),newPwd=$('newPassword').value.trim(),cfmPwd=$('confirmPassword').value.trim();if(!oldPwd||!newPwd){dcToast('请填写旧密码和新密码');return;}if(newPwd!==cfmPwd){dcToast('两次输入的新密码不一致');return;}if(newPwd.length<6){dcToast('新密码至少6位');return;}dcPost('act_pwd_change',{old_pwd:oldPwd,new_pwd:newPwd},function(res){if(res.success){dcToast('密码修改成功，请重新登录');$('oldPassword').value='';$('newPassword').value='';$('confirmPassword').value='';setTimeout(function(){window.location.href='index.php';},1500);}else{dcToast(res.msg);}});}
+function dcLogout(){if(!confirm('确认退出登录?'))return;dcPost('act_logout',{},function(){window.location.href='index.php';});}
 
 
 function dcStartPoll(){DC.pollStarted=true;if(DC.pollTimer)clearInterval(DC.pollTimer);DC.pollTimer=setInterval(dcPoll,3000);}
