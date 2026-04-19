@@ -160,10 +160,6 @@ dc_admin_2024
 
 欢迎提交 Issue 和 Pull Request！
 
-## 📄 开源协议
-
-MIT License - 自由使用、修改和分发
-
 ---
 
 <p align="center">
